@@ -1,0 +1,4 @@
+[submodule "sbx-kits-contrib"]
+	path = sbx-kits-contrib
+	url = git@github.com:exhumea/sbx-kits-contrib.git
+	branch = v3

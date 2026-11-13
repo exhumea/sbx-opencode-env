@@ -1,0 +1,111 @@
+# Ref: <https://docs.docker.com/ai/sandboxes/configuration/environment-files/>
+schemaVersion: '1'
+agent: opencode
+
+args:
+  # GitHub
+  ghUser:
+    required: true
+    pattern: '^$|^[A-Za-z0-9][A-Za-z0-9-]*$'
+    description: 'GitHub user account (authenticated via gh, picks active account if empty)'
+  # Gitlab
+  glabHost:
+    required: true
+    pattern: '^$|^[A-Za-z0-9][A-Za-z0-9.-]*$'
+    description: 'Domain for Gitlab instance'
+  glabHostKey:
+    required: true
+    description: 'Known SSH key for Gitlab instance'
+  glabSshHost:
+    required: true
+    description: 'Custom SSH host:port for Gitlab instance (optional)'
+  glabContainerRegistryDomains:
+    required: true
+    description: 'Custom container registry domains for Gitlab instance (optional)'
+  # Git auth/signing
+  gitName:
+    required: true
+    description: 'User name for Git commits'
+  gitEmail:
+    required: true
+    description: 'User email for Git commits'
+  gitSshSigningKey:
+    required: true
+    description: 'SSH key to use for Git signing'
+  # OpenCode
+  hostPort:
+    required: true
+    description: 'Host port for OpenCode service'
+  defaultModel:
+    default: 'opencode/deepseek-v4.1-flash-free'
+    description: 'Default model for OpenCode CLI'
+  opencodeApiKey:
+    default: ''
+    description: 'API key for OpenCode Console (optional)'
+  # Other AI providers
+  cloudflareAccountId:
+    default: ''
+    description: 'Account ID when using Cloudflare AI provider (optional)'
+  # Paths (relative to this file)
+  clone:
+    default: false
+    description: 'Whether to clone or mount workspace'
+  kitsDir:
+    default: './sbx-kits-contrib'
+    description: 'Directory for SBX kits'
+  #dataDir:
+  #  default: '../data'
+  #  description: 'Directory for project data'
+
+entrypoint: ['opencode'] # or "/bin/bash"
+# cmd: ["pair", "--url", "http://127.0.0.1:${{ env.args.hostPort }}"]
+
+kits:
+  - source: ${{ env.args.kitsDir }}/opencode
+    args:
+      model: ${{ env.args.defaultModel }}
+  # mixins
+  - ${{ env.args.kitsDir }}/github-ssh
+  - source: ${{ env.args.kitsDir }}/gitlab
+    args:
+      host: ${{ env.args.glabHost }}
+      sshHost: ${{ env.args.glabSshHost }}
+      containerRegistryDomains: ${{ env.args.glabContainerRegistryDomains }}
+  - source: ${{ env.args.kitsDir }}/gitlab-ssh
+    args:
+      host: ${{ env.args.glabHost }}
+      hostKey: ${{ env.args.glabHostKey }}
+  - source: ${{ env.args.kitsDir }}/git-ssh-sign
+    args:
+      gitName: ${{ env.args.gitName }}
+      gitEmail: ${{ env.args.gitEmail }}
+      gitSshSigningKey: ${{ env.args.gitSshSigningKey }}
+
+ports:
+  - sandbox: 4123
+    host: ${{ env.args.hostPort }}
+    hostIP: 0.0.0.0
+
+secrets:
+  github: # TODO? conditional?
+    command: gh auth token -u "${{ env.args.ghUser }}"
+    snapshot: true # cache command value
+  gitlab: # TODO? conditional?
+    command: glab config get token --host "${{ env.args.glabHost }}"
+    snapshot: true # cache command value
+
+env:
+  GITLAB_HOST: ${{ env.args.glabHost }}
+  FREEPI_VERSION: 0.6.23 # min version enforcement, cf. <https://www.npmjs.com/package/free-pi-cli?activeTab=versions>
+  OPENCODE_API_KEY: ${{ env.args.opencodeApiKey }} # auth proxy does NOT work for this provider due to TLS fingerprinting
+  CLOUDFLARE_ACCOUNT_ID: ${{ env.args.cloudflareAccountId }}
+
+workspace:
+  path: ${{ env.projectDir }}
+  clone: ${{ env.args.clone }}
+  # target: /home/agent/workspace # not available yet, cf. <https://github.com/docker/sandbox-kit-spec/issues/215>
+
+additionalWorkspaces: []
+  #- path: ${{ env.args.dataDir }}
+  #  target: ${{ env.projectDir }}/../data
+  #  readOnly: true
