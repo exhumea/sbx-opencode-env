@@ -1,0 +1,66 @@
+#!/bin/bash
+# Usage: [SBX_FORCE_AS_USER=1] $0
+
+set -euo pipefail
+
+SBX_USER_INSTALL_DIR=${SBX_USER_INSTALL_DIR:-"$HOME/.local/opt/sbx"}
+
+cur_version=$({ sbx --version 2>/dev/null || echo '_ _ /'; } | cut -d' ' -f3)
+gh_version=$(gh release view -R docker/sbx-releases --json tagName --jq .tagName)
+if [ "$gh_version" = "$cur_version" ]; then
+  echo "sbx: already up-to-date ($cur_version)"
+  exit 0
+fi
+
+echo "sbx: updating from $cur_version to $gh_version"
+
+arch=$(uname -m)
+case "$arch" in
+  x86_64) arch="amd64" ;;
+  aarch64) arch="arm64" ;;
+  *)
+    echo "unsupported arch '$arch'" >&2
+    exit 1
+    ;;
+esac
+
+GLIBC_VERSION=$(getconf GNU_LIBC_VERSION | cut -d' ' -f2)
+if printf '%s\n' "2.43" "$GLIBC_VERSION" | sort -C -V; then
+  compat_distro=ubuntu2604 # (for instance Debian 14 has 2.43)
+elif printf '%s\n' "2.39" "$GLIBC_VERSION" | sort -C -V; then
+  compat_distro=ubuntu2404 # (for instance Debian 13 has 2.41)
+else
+  echo "glibc $GLIBC_VERSION < 2.39: update your distro (>= Debian 13 or Ubuntu 24)" >&2
+  exit 1
+fi
+
+fname=DockerSandboxes-linux-$arch-$compat_distro.deb
+
+tmpdir=$(mktemp -d /tmp/sbx-upd-XXXXXXXXXX)
+gh release download -R docker/sbx-releases -p "$fname" -D "$tmpdir"
+
+if [ "${SBX_FORCE_AS_USER:-}" != "1" ] && id -nG "$USER" | grep -qwE 'sudo|admin'; then
+  # On Ubuntu, system installation should rather be performed from official APT repository
+  # cf. <https://docs.docker.com/ai/sandboxes/install/#install-on-ubuntu>
+  echo "system installation of sbx (sudo)" >&2
+  sudo apt install "$tmpdir/$fname"
+  exit 0
+fi
+
+# User installation
+echo "user installation of sbx" >&2
+dpkg -x "$tmpdir/$fname" "$tmpdir"
+mv -t "$tmpdir" "$tmpdir"/usr/* && rmdir "$tmpdir/usr" && rm "$tmpdir/$fname"
+rm -rf "$SBX_USER_INSTALL_DIR" && mv "$tmpdir" "$SBX_USER_INSTALL_DIR"
+
+# shellcheck disable=SC2016
+if ! grep -qF 'LD_LIBRARY_PATH="$SBX_USER_INSTALL_DIR/libexec:' "$HOME/.bashrc"; then
+  cat >>"$HOME/.bashrc" <<EOF
+
+# sbx
+export SBX_USER_INSTALL_DIR="$SBX_USER_INSTALL_DIR"
+export PATH="\$SBX_USER_INSTALL_DIR/bin:\$PATH"
+export LD_LIBRARY_PATH="\$SBX_USER_INSTALL_DIR/libexec:\$LD_LIBRARY_PATH"
+EOF
+  echo "updated your ~/.bashrc, please source it" >&2
+fi
