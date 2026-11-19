@@ -37,8 +37,14 @@ args:
     required: true
     description: 'Host port for OpenCode service'
   defaultModel:
+    # cf. <https://models.dev/providers/opencode/>
     default: 'opencode/deepseek-v4.1-flash-free'
-    description: 'Default model for OpenCode CLI'
+    description: 'Default model in OpenCode'
+  defaultImageModel:
+    # cf. <https://openrouter.ai/models?output_modalities=image&variant=free>
+    # or <https://models.dev/experimental/v2.0/api.json?type=image>
+    default: 'openrouter/recraft/recraft-v4.1-flash-v2:free'
+    description: 'Default model for image generation in OpenCode'
   opencodeApiKey:
     default: ''
     description: 'API key for OpenCode Console (optional)'
@@ -46,6 +52,9 @@ args:
   cloudflareAccountId:
     default: ''
     description: 'Account ID when using Cloudflare AI provider (optional)'
+  freePiVersion:
+    default: ''
+    description: 'Version of free-pi client to use this provider (optional)'
   # Paths (relative to this file)
   clone:
     default: false
@@ -53,17 +62,15 @@ args:
   kitsDir:
     default: './sbx-kits-contrib'
     description: 'Directory for SBX kits'
-  #dataDir:
-  #  default: '../data'
-  #  description: 'Directory for project data'
+  # dataDir:
+  #   default: '../data'
+  #   description: 'Directory for project data'
 
 entrypoint: ['opencode'] # or "/bin/bash"
 # cmd: ["pair", "--url", "http://127.0.0.1:${{ env.args.hostPort }}"]
 
 kits:
-  - source: ${{ env.args.kitsDir }}/opencode
-    args:
-      model: ${{ env.args.defaultModel }}
+  - ${{ env.args.kitsDir }}/opencode
   # mixins
   - ${{ env.args.kitsDir }}/github-ssh
   - source: ${{ env.args.kitsDir }}/gitlab
@@ -84,7 +91,7 @@ kits:
 ports:
   - sandbox: 4123
     host: ${{ env.args.hostPort }}
-    hostIP: 0.0.0.0
+    hostIP: 0.0.0.0 # <!> should only run on trusted networks
 
 secrets:
   github: # TODO? conditional?
@@ -96,8 +103,10 @@ secrets:
 
 env:
   GITLAB_HOST: ${{ env.args.glabHost }}
-  FREEPI_VERSION: 0.6.23 # min version enforcement, cf. <https://www.npmjs.com/package/free-pi-cli?activeTab=versions>
-  OPENCODE_API_KEY: ${{ env.args.opencodeApiKey }} # auth proxy does NOT work for this provider due to TLS fingerprinting
+  FREEPI_VERSION: ${{ env.args.freePiVersion }}
+  OPENCODE_MODEL: ${{ env.args.defaultModel }}
+  OPENCODE_IMAGE_MODEL: ${{ env.args.defaultImageModel }}
+  OPENCODE_API_KEY: ${{ env.args.opencodeApiKey }} # auth proxy does NOT work for this provider (TLS fingerprinting)
   CLOUDFLARE_ACCOUNT_ID: ${{ env.args.cloudflareAccountId }}
 
 workspace:
@@ -106,6 +115,6 @@ workspace:
   # target: /home/agent/workspace # not available yet, cf. <https://github.com/docker/sandbox-kit-spec/issues/215>
 
 additionalWorkspaces: []
-  #- path: ${{ env.args.dataDir }}
-  #  target: ${{ env.projectDir }}/../data
-  #  readOnly: true
+  # - path: ${{ env.args.dataDir }}
+  #   target: ${{ env.projectDir }}/../data
+  #   readOnly: true

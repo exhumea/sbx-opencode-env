@@ -1,9 +1,17 @@
 #!/bin/bash
-# Usage: [PORT=<custom-port>] [HOST=<custom-hostname>] $0
+# Usage: [PORT=<custom-port>] [HOST=<custom-hostname>] [BUILD_ONLY=1] $0 [extra sbx env args]
 
 set -euo pipefail
 
 SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
+
+if [ -z "${SBX_KITS_DIR:-}" ]; then
+  if [ -d "./sbx-kits-contrib" ]; then
+    SBX_KITS_DIR=./sbx-kits-contrib
+  else
+    SBX_KITS_DIR="$SCRIPT_DIR"/sbx-kits-contrib
+  fi
+fi
 
 get_free_port() {
   python3 -c '
@@ -20,6 +28,17 @@ HOST=${HOST:-$(hostname -f)}
 
 # Remote config
 remote=$(git remote get-url --push "${REMOTE_NAME:-origin}" || true)
+
+run_quietly() {
+  local output
+  if output=$("$@" 2>&1); then
+    return 0
+  else
+    local status=$?
+    echo "$output" >&2
+    return "$status"
+  fi
+}
 
 if [[ "$remote" =~ ^(ssh://)?git@github.com: ]]; then
   # GitHub config
@@ -41,6 +60,7 @@ if [[ "$remote" =~ ^(ssh://)?git@github.com: ]]; then
 elif [[ "$remote" =~ ^(ssh://)?git@([^:]+): ]]; then
   # Gitlab config
   glab_host=${BASH_REMATCH[2]}
+  run_quietly glab auth status --hostname "$glab_host"
 
   glab_user_info=$(GITLAB_HOST="$glab_host" glab api user | jq '{username, name, commit_email}')
   glab_user=$(jq -r .username <<<"$glab_user_info")
@@ -60,35 +80,52 @@ else
   exit 1
 fi
 
-git_signing_key=$(cat <<<"$needed_keys_full" | grep -F signing+ | cut -d' ' -f-2)
+git_signing_key=$(cat <<<"$needed_keys_full" | { grep -F 'signing+' || echo ''; } | cut -d' ' -f-2)
 if [ -z "$git_signing_key" ]; then
   echo "<!> no matching signing key found for $user" >&2
 fi
 
-mapfile -t needed_keys <<<"$(echo "$needed_keys_full" | awk '{print $2}')"
-args=()
-for key in "${needed_keys[@]}"; do args+=(-k "$key"); done
+# Dynamic latest version for free-pi client (needed due to not too old version enforcement)
+FREEPI_VERSION=${FREEPI_VERSION:-$(curl -fsSL https://registry.npmjs.org/free-pi-cli/latest -o- | jq -r .version)}
+
+env_args=(
+  --env-arg kitsDir="$SBX_KITS_DIR"
+  --env-arg ghUser="${gh_user:-}"
+  --env-arg glabHost="${glab_host:-gitlab.com}"
+  --env-arg glabHostKey="${glab_ssh_server_key:-}"
+  --env-arg glabSshHost="${glab_ssh_host:-}"
+  --env-arg glabContainerRegistryDomains="${glab_container_registry_domains:-}"
+  --env-arg gitName="$git_name"
+  --env-arg gitEmail="$git_email"
+  --env-arg gitSshSigningKey="$git_signing_key"
+  --env-arg hostPort="$PORT"
+  --env-arg opencodeApiKey="${OPENCODE_API_KEY:-}" # <!> not secret
+  --env-arg cloudflareAccountId="${CLOUDFLARE_ACCOUNT_ID:-}"
+  --env-arg freePiVersion="$FREEPI_VERSION"
+)
+
+if [ "${BUILD_ONLY:-}" = 1 ]; then
+  echo "Only building sandbox..." >&2
+
+  # note: 'plan' does NOT build nor asks for special permissions
+  sbx env create "${env_args[@]}" "${@}"
+  exit 0
+fi
+
+# SSH-agent filtering (true run only)
+mapfile -t needed_keys < <(echo "$needed_keys_full" | awk 'NF{print $2}')
+ssh_agent_filter_args=()
+for key in "${needed_keys[@]}"; do ssh_agent_filter_args+=(-k "$key"); done
 
 # no way to control output socket, so we have to change working directory
 ssh_dir="/tmp/sbx-oc-${PORT}-ssh"
-rm -rf "$ssh_dir" && mkdir "$ssh_dir" && pushd "$ssh_dir" >/dev/null
-ssh_auth_sock=$(ssh-agent-filter "${args[@]}" | sed -nE "s/^SSH_AUTH_SOCK='([^']+)';.+/\1/p")
+rm -rf "$ssh_dir" && mkdir -m 0700 "$ssh_dir" && pushd "$ssh_dir" >/dev/null
+ssh_auth_sock=$(ssh-agent-filter "${ssh_agent_filter_args[@]}" | sed -nE "s/^SSH_AUTH_SOCK='([^']+)';.+/\1/p")
 popd >/dev/null
 
+echo PORT="$PORT"
 echo SSH_AUTH_SOCK="$ssh_auth_sock"
 
 # Unfortunately SSH_AUTH_SOCK is needed everywhere (even for re-pairing)
-SSH_AUTH_SOCK="$ssh_auth_sock" sbx env run --force \
-  --env-arg ghUser="${gh_user:-}" \
-  --env-arg glabHost="${glab_host:-}" \
-  --env-arg glabHostKey="${glab_ssh_server_key:-}" \
-  --env-arg glabSshHost="${glab_ssh_host:-}" \
-  --env-arg glabContainerRegistryDomains="${glab_container_registry_domains:-}" \
-  --env-arg gitName="$git_name" \
-  --env-arg gitEmail="$git_email" \
-  --env-arg gitSshSigningKey="$git_signing_key" \
-  --env-arg hostPort="$PORT" \
-  --env-arg opencodeApiKey="${OPENCODE_API_KEY:-}" \
-  --env-arg cloudflareAccountId="${CLOUDFLARE_ACCOUNT_ID:-}" \
-  --name "oc-$PORT" --detach &&
-  SSH_AUTH_SOCK="$ssh_auth_sock" sbx exec -it "oc-$PORT" /bin/bash -c "opencode pair --url 'http://$HOST:$PORT'"
+SSH_AUTH_SOCK="$ssh_auth_sock" sbx env run --force --detach --name "oc-$PORT" "${env_args[@]}" "${@}"
+SSH_AUTH_SOCK="$ssh_auth_sock" sbx exec -it "oc-$PORT" /bin/bash -c "opencode pair --url 'http://$HOST:$PORT'"

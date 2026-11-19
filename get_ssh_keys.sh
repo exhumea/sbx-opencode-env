@@ -13,10 +13,10 @@ fail() {
 
 sock=${SSH_AUTH_SOCK:-}
 if [ -z "$sock" ]; then
-  fail "SSH_AUTH_SOCK is not set."
+  fail "SSH_AUTH_SOCK is not set, run \`eval \"\$(ssh-agent)\"\` and then \`ssh-add\` keys in it."
 fi
 if [ ! -S "$sock" ]; then
-  fail "the SSH agent socket $sock does not exist."
+  fail "the SSH agent socket $sock does NOT exist, unset SSH_AUTH_SOCK variable."
 fi
 
 if agent_keys=$(ssh-add -L 2>&1); then
@@ -84,8 +84,8 @@ EOF
 case "${1:-}" in
   "gitlab")
     gitlab_user=$(glab auth status -F json --jq '.hosts[0] | "\(.user)@\(.host)"')
-    gitlab_keys_jq_expr="map(\"\(.key | [splits(\"\\\s+\") | .][:2] | join(\" \")) \(.usage_type)+$gitlab_user\") | join(\"\n\")"
-    gitlab_keys=$(glab ssh-key list -F json --jq "$gitlab_keys_jq_expr")
+    gitlab_keys_jq_expr='map("\(.key | [splits("\\s+") | .][:2] | join(" ")) \(.usage_type)+\($user)") | join("\n")'
+    gitlab_keys=$(glab ssh-key list -F json | jq -r --arg user "$gitlab_user" "$gitlab_keys_jq_expr")
 
     get_matching_keys "$gitlab_keys" "authentication and/or signing" "keep-comment"
     ;;
@@ -94,7 +94,7 @@ case "${1:-}" in
     github_user=$(gh api user --jq .login)
     github_auth_keys=$(curl -fsSL "https://github.com/$github_user.keys") ||
       fail "unable to fetch GitHub SSH authentication keys for $github_user."
-    github_sign_keys=$(gh api "users/$github_user/ssh_signing_keys" --jq '.[].key' 2>/dev/null) ||
+    github_sign_keys=$(gh api --paginate "users/$github_user/ssh_signing_keys" --jq '.[].key' 2>/dev/null) ||
       fail "unable to fetch GitHub SSH signing keys for $github_user."
 
     matching_auth_key=$(get_matching_keys "$github_auth_keys" "authentication" "no-comment")

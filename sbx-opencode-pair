@@ -1,0 +1,14 @@
+#!/bin/bash
+# Usage: PORT=<existing-sandbox-port> [HOST=<custom-hostname>] $0 [custom bash args]
+
+set -euo pipefail
+
+HOST=${HOST:-$(hostname -f)}
+
+bash_args=("$@")
+if [ "${#bash_args[@]}" -eq 0 ]; then
+  bash_args=(-c "opencode pair --url 'http://$HOST:$PORT'")
+fi
+
+ssh_auth_sock=$(find "/tmp/sbx-oc-$PORT-ssh/" -name 'agent.*' -type s -print -quit) # at most 1
+SSH_AUTH_SOCK="$ssh_auth_sock" exec sbx exec -it "oc-$PORT" /bin/bash "${bash_args[@]}"
