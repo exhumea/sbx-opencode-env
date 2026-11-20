@@ -1,0 +1,6 @@
+# Ref: <https://github.com/lycheeverse/lychee/blob/master/lychee.example.toml>
+# Only run on demand and from the scheduled workflow (.github/workflows/links.yml).
+
+max_retries = 2
+retry_wait_time = 2
+timeout = 20

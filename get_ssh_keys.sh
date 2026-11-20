@@ -84,6 +84,7 @@ EOF
 case "${1:-}" in
   "gitlab")
     gitlab_user=$(glab auth status -F json --jq '.hosts[0] | "\(.user)@\(.host)"')
+    # shellcheck disable=SC2016
     gitlab_keys_jq_expr='map("\(.key | [splits("\\s+") | .][:2] | join(" ")) \(.usage_type)+\($user)") | join("\n")'
     gitlab_keys=$(glab ssh-key list -F json | jq -r --arg user "$gitlab_user" "$gitlab_keys_jq_expr")
 

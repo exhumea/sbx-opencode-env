@@ -1,0 +1,78 @@
+---
+# Single source of truth for linter versions: CI runs this same config
+# (.github/workflows/lint.yml), so local hooks and CI cannot drift.
+# Install with: pre-commit install
+# Run manually: pre-commit run --all-files
+# Update versions: edit the pins below (pre-commit autoupdate cannot see
+# repo: local hooks).
+# Tools are installed from Python wheels or npm: no hook uses
+# language: golang, so pre-commit never compiles anything.
+default_install_hook_types: [pre-commit]
+exclude: ^sbx-kits-contrib/
+
+repos:
+  - repo: local
+    hooks:
+      - id: shfmt
+        name: shfmt
+        entry: shfmt -i 2 -ci -d
+        language: python
+        types: [shell]
+        additional_dependencies: [shfmt-py==4.2.0]
+
+      - id: shellcheck
+        name: shellcheck
+        entry: shellcheck
+        language: python
+        types: [shell]
+        additional_dependencies: [shellcheck-py==0.11.0.1]
+
+      - id: yamllint
+        name: yamllint
+        entry: yamllint --strict -c .yamllint.yml
+        language: python
+        types: [yaml]
+        additional_dependencies: [yamllint==1.38.0]
+
+      - id: actionlint
+        name: actionlint
+        entry: actionlint
+        language: python
+        types: [yaml]
+        files: ^\.github/workflows/
+        additional_dependencies: [actionlint-py==1.7.12.25]
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-merge-conflict
+      - id: check-executables-have-shebangs
+      - id: check-shebang-scripts-are-executable
+      - id: detect-private-key
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+      - id: check-added-large-files
+      - id: check-case-conflict
+      - id: check-toml
+
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.4.3
+    hooks:
+      - id: codespell
+        args: [-I, .codespell-ignore.txt]
+
+  - repo: https://github.com/DavidAnson/markdownlint-cli2
+    rev: v0.24.2
+    hooks:
+      - id: markdownlint-cli2
+
+  # Network-bound and downloaded as a prebuilt binary (no compilation):
+  # manual stage only, driven by .github/workflows/links.yml.
+  - repo: https://github.com/lycheeverse/lychee
+    rev: lychee-v0.24.2
+    hooks:
+      - id: lychee
+        stages: [manual]
+        types: [markdown]
+        args: [-vv, --config, lychee.toml]

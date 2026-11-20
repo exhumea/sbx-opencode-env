@@ -1,0 +1,27 @@
+---
+name: pre-commit setup
+description: Install pre-commit and restore its hook environments cache
+
+inputs:
+  python-version:
+    description: Python version used by the hooks
+    default: '3.12'
+  pre-commit-version:
+    description: pre-commit release to install
+    default: '4.7.0'
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v7
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install pre-commit
+      shell: bash
+      run: pip install "pre-commit==${{ inputs.pre-commit-version }}"
+
+    - uses: actions/cache@v6
+      with:
+        path: ~/.cache/pre-commit
+        key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}

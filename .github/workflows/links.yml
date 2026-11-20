@@ -1,0 +1,25 @@
+---
+name: check-links
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: links-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lychee:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/pre-commit-setup
+      # 'lychee' is declared with stages: [manual] in .pre-commit-config.yaml,
+      # so it is skipped by the per-commit lint workflow and only runs here.
+      - name: lychee
+        run: pre-commit run lychee --hook-stage manual --all-files --show-diff-on-failure

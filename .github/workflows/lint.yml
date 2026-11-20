@@ -1,0 +1,28 @@
+---
+name: lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  # needed to be able to manually trigger the pipeline
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lint-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # .pre-commit-config.yaml is the single source of truth for linter versions;
+      # the composite action installs pre-commit and restores the cache of its hook environments
+      - uses: ./.github/actions/pre-commit-setup
+      - name: pre-commit run
+        run: pre-commit run --all-files --show-diff-on-failure

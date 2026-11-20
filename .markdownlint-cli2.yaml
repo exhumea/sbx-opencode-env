@@ -1,0 +1,9 @@
+---
+# Ref: <https://github.com/DavidAnson/markdownlint-cli2>
+config:
+  # Prose lines are kept unwrapped: the README relies on long table rows and
+  # inline links, wrapping them would add noise for no reader benefit.
+  MD013: false
+  # The README title is an H2 on purpose (the H1 lives elsewhere).
+  MD041:
+    level: 2
