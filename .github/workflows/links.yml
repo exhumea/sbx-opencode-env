@@ -18,6 +18,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          submodules: recursive # needed for self-links
       - uses: ./.github/actions/pre-commit-setup
       # 'lychee' is declared with stages: [manual] in .pre-commit-config.yaml,
       # so it is skipped by the per-commit lint workflow and only runs here.
